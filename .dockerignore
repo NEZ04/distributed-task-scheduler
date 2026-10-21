@@ -1,0 +1,5 @@
+build/
+.git/
+*.bat
+*_log.txt
+WALKTHROUGH.md

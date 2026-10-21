@@ -1,0 +1,47 @@
+# docker compose up --build        API on http://localhost:${API_PORT:-8080}
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]  # queue survives restarts
+    volumes:
+      - redis-data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: scheduler
+      POSTGRES_PASSWORD: scheduler
+      POSTGRES_DB: scheduler
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scheduler"]
+      interval: 2s
+      retries: 30
+
+  api:
+    build: .
+    command: ["scheduler_api"]
+    environment: &env
+      REDIS_HOST: redis
+      PG_DSN: postgresql://scheduler:scheduler@postgres:5432/scheduler
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+
+  worker:
+    build: .
+    command: ["scheduler_worker"]
+    environment: *env
+    deploy:
+      replicas: 3
+    stop_grace_period: 30s  # SIGTERM lets a worker finish its current task
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_started}
+
+volumes:
+  redis-data:
+  pg-data:
